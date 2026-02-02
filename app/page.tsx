@@ -30,10 +30,10 @@ export default function Home() {
       const [allRachas, myRachas] = await Promise.all([
         rachaService.listarRachas(),
         rachaService.listarMeusRachas()
-      ])
+      ]);
 
       setRachas(allRachas.rachas || [])
-      setMeusRachas(myRachas.rachas || [])
+      setMeusRachas(myRachas.criados || [])  // Mude de myRachas.rachas para myRachas.criados
     } catch (error: unknown) {
       if (error instanceof Error) {
         toast.error(error.message || "Erro ao carregar rachas")

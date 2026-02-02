@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"  // Adicionar useEffect aqui
 import { Calendar, MapPin, Users, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,18 +14,20 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import rachaService, { CriarRachaData } from "@/lib/racha"
+import rachaService, { CriarRachaData, Racha as RachaType } from "@/lib/racha"  // Importar RachaType
 import { toast } from "sonner"
 
 interface RachaModalProps {
     isOpen: boolean
     onClose: () => void
     onSuccess?: () => void
+    initialData?: RachaType  // Agora RachaType está definido
+    isEditing?: boolean
 }
 
-export function RachaModal({ isOpen, onClose, onSuccess }: RachaModalProps) {
+export function RachaModal({ isOpen, onClose, onSuccess, initialData, isEditing = false }: RachaModalProps) {
     const [isLoading, setIsLoading] = useState(false)
-    const [formData, setFormData] = useState<CriarRachaData>({
+    const [formData, setFormData] = useState<CriarRachaData>(initialData || {
         nome: "",
         descricao: "",
         data_hora: "",
@@ -34,6 +36,39 @@ export function RachaModal({ isOpen, onClose, onSuccess }: RachaModalProps) {
         limite_max: 12,
         valor: 25
     })
+
+    // Adicionar useEffect
+    useEffect(() => {
+        if (initialData) {
+            // Formatar data_hora para input datetime-local
+            const dataHora = new Date(initialData.data_hora)
+            // Ajustar para o fuso horário local
+            const timezoneOffset = dataHora.getTimezoneOffset() * 60000
+            const localDate = new Date(dataHora.getTime() - timezoneOffset)
+            const formattedDate = localDate.toISOString().slice(0, 16)
+
+            setFormData({
+                nome: initialData.nome,
+                descricao: initialData.descricao || "",
+                data_hora: formattedDate,
+                localizacao: initialData.localizacao,
+                limite_min: initialData.limite_min || 8,
+                limite_max: initialData.limite_max,
+                valor: initialData.valor || 25
+            })
+        } else {
+            // Resetar form se não há initialData
+            setFormData({
+                nome: "",
+                descricao: "",
+                data_hora: "",
+                localizacao: "",
+                limite_min: 8,
+                limite_max: 12,
+                valor: 25
+            })
+        }
+    }, [initialData, isOpen])  // Adicionar isOpen como dependência
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target
@@ -60,28 +95,37 @@ export function RachaModal({ isOpen, onClose, onSuccess }: RachaModalProps) {
         setIsLoading(true)
 
         try {
-            await rachaService.criarRacha(formData)
+            if (isEditing && initialData?.id) {
+                await rachaService.editarRacha(initialData.id, formData)
+                toast.success("Racha atualizado com sucesso!")
+            } else {
+                await rachaService.criarRacha(formData)
+                toast.success("Racha criado com sucesso!")
+            }
 
-            toast.success("Racha criado com sucesso!")
             onClose()
-            setFormData({
-                nome: "",
-                descricao: "",
-                data_hora: "",
-                localizacao: "",
-                limite_min: 8,
-                limite_max: 12,
-                valor: 25
-            })
+
+            // Resetar form apenas se não estiver editando
+            if (!isEditing) {
+                setFormData({
+                    nome: "",
+                    descricao: "",
+                    data_hora: "",
+                    localizacao: "",
+                    limite_min: 8,
+                    limite_max: 12,
+                    valor: 25
+                })
+            }
 
             if (onSuccess) {
                 onSuccess()
             }
         } catch (error: unknown) {
             if (error instanceof Error) {
-                toast.error(error.message)
+                toast.error(error.message || `Erro ao ${isEditing ? 'atualizar' : 'criar'} racha`)
             } else {
-                toast.error("Erro ao criar racha")
+                toast.error(`Erro ao ${isEditing ? 'atualizar' : 'criar'} racha`)
             }
             console.error(error)
         } finally {
@@ -93,9 +137,11 @@ export function RachaModal({ isOpen, onClose, onSuccess }: RachaModalProps) {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[500px] bg-background">
                 <DialogHeader>
-                    <DialogTitle className="text-xl">Criar Novo Racha</DialogTitle>
+                    <DialogTitle className="text-xl">
+                        {isEditing ? "Editar Racha" : "Criar Novo Racha"}
+                    </DialogTitle>
                     <DialogDescription>
-                        Preencha os dados para criar um novo racha de futebol
+                        {isEditing ? "Atualize os dados do racha" : "Preencha os dados para criar um novo racha de futebol"}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -253,9 +299,11 @@ export function RachaModal({ isOpen, onClose, onSuccess }: RachaModalProps) {
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                    Criando...
+                                    {isEditing ? "Atualizando..." : "Criando..."}
                                 </>
-                            ) : "Criar Racha"}
+                            ) : (
+                                isEditing ? "Atualizar Racha" : "Criar Racha"
+                            )}
                         </Button>
                     </DialogFooter>
                 </form>

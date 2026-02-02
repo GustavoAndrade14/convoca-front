@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Calendar, MapPin, Users, MoreVertical, Edit, Trash2, Eye, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,6 +42,7 @@ export function RachaList({ rachas, showActions = false, onRefresh }: RachaListP
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedRacha, setSelectedRacha] = useState<Racha | null>(null)
     const [isLoading, setIsLoading] = useState<string | null>(null)
+    const [participacoes, setParticipacoes] = useState<Record<string, boolean>>({})
 
     const formatDate = (dateString: string) => {
         const date = new Date(dateString)
@@ -50,6 +51,29 @@ export function RachaList({ rachas, showActions = false, onRefresh }: RachaListP
             time: date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
         }
     }
+
+    // Verificar participações ao carregar
+    useEffect(() => {
+        const verificarParticipacoes = async () => {
+            const novasParticipacoes: Record<string, boolean> = {}
+
+            for (const racha of rachas) {
+                try {
+                    const { participando } = await rachaService.verificarParticipacao(racha.id)
+                    novasParticipacoes[racha.id] = participando
+                } catch (error) {
+                    console.error(`Erro ao verificar participação no racha ${racha.id}:`, error)
+                    novasParticipacoes[racha.id] = false
+                }
+            }
+
+            setParticipacoes(novasParticipacoes)
+        }
+
+        if (rachas.length > 0) {
+            verificarParticipacoes()
+        }
+    }, [rachas])
 
     const handleDelete = async (id: string) => {
         if (!confirm("Tem certeza que deseja excluir este racha?")) {
@@ -94,21 +118,49 @@ export function RachaList({ rachas, showActions = false, onRefresh }: RachaListP
     }
 
     const handleParticipar = async (id: string) => {
-        setIsLoading(id)
+        setIsLoading(id);
         try {
-            await rachaService.participarRacha(id)
-            toast.success("Participação confirmada!")
-            if (onRefresh) onRefresh()
+            const resultado = await rachaService.participarRacha(id);
+
+            // Atualizar o estado de participação localmente
+            setParticipacoes(prev => ({
+                ...prev,
+                [id]: true
+            }));
+
+            // Definir interface para a resposta
+            interface ParticipacaoResponse {
+                mensagem: string;
+                participante?: {
+                    tipo: string;
+                    ordem?: number;
+                };
+            }
+
+            const response = resultado as ParticipacaoResponse;
+            const mensagem = response.mensagem || "Participação confirmada!";
+
+            if (response.participante) {
+                if (response.participante.tipo === 'suplente') {
+                    toast.success(`${mensagem} Você está na posição ${response.participante.ordem} da fila de suplentes.`);
+                } else {
+                    toast.success(mensagem);
+                }
+            } else {
+                toast.success(mensagem);
+            }
+
+            if (onRefresh) onRefresh();
         } catch (error: unknown) {
             if (error instanceof Error) {
-                toast.error(error.message || "Erro ao participar do racha")
+                toast.error(error.message || "Erro ao participar do racha");
             } else {
-                toast.error("Erro ao participar do racha")
+                toast.error("Erro ao participar do racha");
             }
         } finally {
-            setIsLoading(null)
+            setIsLoading(null);
         }
-    }
+    };
 
     const handleViewDetails = (id: string) => {
         router.push(`/rachas/${id}`)
@@ -151,6 +203,7 @@ export function RachaList({ rachas, showActions = false, onRefresh }: RachaListP
                     const porcentagem = (participantes / racha.limite_max) * 100
                     const isLotado = participantes >= racha.limite_max
                     const progressColor = getProgressColor(porcentagem)
+                    const jaParticipa = participacoes[racha.id] || false
 
                     return (
                         <Card
@@ -262,7 +315,7 @@ export function RachaList({ rachas, showActions = false, onRefresh }: RachaListP
                                     </Button>
                                     <Button
                                         className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
-                                        disabled={isLotado || isLoading === racha.id}
+                                        disabled={isLotado || isLoading === racha.id || jaParticipa}
                                         onClick={() => handleParticipar(racha.id)}
                                     >
                                         {isLoading === racha.id ? (
@@ -271,7 +324,7 @@ export function RachaList({ rachas, showActions = false, onRefresh }: RachaListP
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
                                         ) : null}
-                                        {isLotado ? "Lotado" : "Participar"}
+                                        {jaParticipa ? "Já Participando" : isLotado ? "Lotado" : "Participar"}
                                     </Button>
                                 </div>
                             </CardFooter>

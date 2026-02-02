@@ -13,6 +13,7 @@ export interface Racha {
     total_participantes?: number;
     total_confirmados?: number;
     link_compartilhamento?: string;
+    criado_por?: string;
 }
 
 export interface CriarRachaData {
@@ -33,6 +34,11 @@ export interface EditarRachaData {
     limite_min?: number;
     limite_max?: number;
     valor?: number;
+}
+
+export interface MeusRachasResponse {
+    criados: Racha[];
+    participando: Racha[];  // Rachas onde o usuário participa mas não criou
 }
 
 class RachaService {
@@ -74,21 +80,25 @@ class RachaService {
     }
 
     // Listar meus rachas (como dono)
-    async listarMeusRachas(): Promise<{ rachas: Racha[] }> {
+    async listarMeusRachas(): Promise<MeusRachasResponse> {
         try {
-            // Para simplificar, vamos filtrar no frontend
-            // Em uma implementação real, o backend teria um endpoint específico
-            const response = await fetch(`${this.baseUrl}/rachas`);
-
-            if (!response.ok) {
-                throw new Error('Erro ao buscar rachas');
+            const token = this.getToken();
+            if (!token) {
+                throw new Error('Token não encontrado');
             }
 
-            const data = await response.json();
+            const response = await fetch(`${this.baseUrl}/rachas/meus/rachas`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
 
-            // Aqui você precisaria implementar a lógica real
-            // Por enquanto retorna todos (simulação)
-            return data;
+            if (!response.ok) {
+                throw new Error('Erro ao buscar meus rachas');
+            }
+
+            return await response.json();
         } catch (error: unknown) {
             if (error instanceof Error) {
                 throw new Error(error.message || 'Erro ao conectar com o servidor');
@@ -123,7 +133,7 @@ class RachaService {
         try {
             const token = this.getToken();
             if (!token) {
-                throw new Error('Token não encontrado');
+                throw new Error('Token não encontrado. Faça login para criar um racha.');
             }
 
             const response = await fetch(`${this.baseUrl}/rachas`, {
@@ -250,16 +260,52 @@ class RachaService {
                 throw new Error('Token não encontrado');
             }
 
-            // Aqui você precisaria implementar a lógica de participação
-            // Por enquanto é uma simulação
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            const response = await fetch(`${this.baseUrl}/rachas/${id}/participantes/participar`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                }
+            });
 
-            return { mensagem: 'Participação confirmada!' };
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Erro ao participar do racha');
+            }
+
+            return result;
         } catch (error: unknown) {
             if (error instanceof Error) {
-                throw new Error(error.message || 'Erro ao participar do racha');
+                throw new Error(error.message || 'Erro ao conectar com o servidor');
             }
             throw new Error('Erro desconhecido');
+        }
+    }
+
+    async verificarParticipacao(id: string): Promise<{ participando: boolean }> {
+        try {
+            const token = this.getToken();
+            if (!token) {
+                return { participando: false };
+            }
+
+            const response = await fetch(`${this.baseUrl}/rachas/${id}/participantes/verificar`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                }
+            });
+
+            if (!response.ok) {
+                return { participando: false };
+            }
+
+            const result = await response.json();
+            return result;
+        } catch (error: unknown) {
+            console.error('Erro ao verificar participação:', error);
+            return { participando: false };
         }
     }
 }
